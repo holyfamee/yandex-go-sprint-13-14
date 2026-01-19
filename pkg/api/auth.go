@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -71,34 +72,37 @@ func signInHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeJSON(w, SignInResponse{Error: "Ошибка чтения запроса"})
+		log.Printf("Ошибка чтения тела запроса: %v", err)
+		writeJSON(w, SignInResponse{Error: "Ошибка чтения запроса"}, http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
 	if err := json.Unmarshal(body, &req); err != nil {
-		writeJSON(w, SignInResponse{Error: "Ошибка десериализации JSON"})
+		log.Printf("Ошибка десериализации JSON: %v", err)
+		writeJSON(w, SignInResponse{Error: "Ошибка десериализации JSON"}, http.StatusBadRequest)
 		return
 	}
 
 	envPassword := os.Getenv("TODO_PASSWORD")
 	if envPassword == "" {
-		writeJSON(w, SignInResponse{Error: "Аутентификация не настроена"})
+		writeJSON(w, SignInResponse{Error: "Аутентификация не настроена"}, http.StatusInternalServerError)
 		return
 	}
 
 	if req.Password != envPassword {
-		writeJSON(w, SignInResponse{Error: "Неверный пароль"})
+		writeJSON(w, SignInResponse{Error: "Неверный пароль"}, http.StatusUnauthorized)
 		return
 	}
 
 	token, err := generateJWT(req.Password)
 	if err != nil {
-		writeJSON(w, SignInResponse{Error: "Ошибка генерации токена"})
+		log.Printf("Ошибка генерации JWT токена: %v", err)
+		writeJSON(w, SignInResponse{Error: "Ошибка генерации токена"}, http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, SignInResponse{Token: token})
+	writeJSON(w, SignInResponse{Token: token}, http.StatusOK)
 }
 
 // auth middleware для проверки аутентификации

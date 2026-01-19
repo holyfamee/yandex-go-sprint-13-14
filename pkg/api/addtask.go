@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -15,17 +16,17 @@ import (
 func getTaskHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
-		writeJSON(w, map[string]string{"error": "Не указан идентификатор"})
+		writeJSON(w, map[string]string{"error": "Не указан идентификатор"}, http.StatusBadRequest)
 		return
 	}
 
 	task, err := db.GetTask(id)
 	if err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusNotFound)
 		return
 	}
 
-	writeJSON(w, task)
+	writeJSON(w, task, http.StatusOK)
 }
 
 // addTaskHandler обрабатывает POST-запросы для добавления новой задачи
@@ -34,33 +35,35 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeJSON(w, map[string]string{"error": "Ошибка чтения запроса"})
+		log.Printf("Ошибка чтения тела запроса: %v", err)
+		writeJSON(w, map[string]string{"error": "Ошибка чтения запроса"}, http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
 	if err := json.Unmarshal(body, &task); err != nil {
-		writeJSON(w, map[string]string{"error": "Ошибка десериализации JSON"})
+		log.Printf("Ошибка десериализации JSON: %v", err)
+		writeJSON(w, map[string]string{"error": "Ошибка десериализации JSON"}, http.StatusBadRequest)
 		return
 	}
 
 	if task.Title == "" {
-		writeJSON(w, map[string]string{"error": "Не указан заголовок задачи"})
+		writeJSON(w, map[string]string{"error": "Не указан заголовок задачи"}, http.StatusBadRequest)
 		return
 	}
 
 	if err := checkDate(&task); err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusBadRequest)
 		return
 	}
 
 	id, err := db.AddTask(&task)
 	if err != nil {
-		writeJSON(w, map[string]string{"error": fmt.Sprintf("Ошибка добавления задачи: %v", err)})
+		writeJSON(w, map[string]string{"error": fmt.Sprintf("Ошибка добавления задачи: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, map[string]string{"id": fmt.Sprintf("%d", id)})
+	writeJSON(w, map[string]string{"id": fmt.Sprintf("%d", id)}, http.StatusOK)
 }
 
 // updateTaskHandler обрабатывает PUT-запросы для обновления существующей задачи
@@ -69,37 +72,39 @@ func updateTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeJSON(w, map[string]string{"error": "Ошибка чтения запроса"})
+		log.Printf("Ошибка чтения тела запроса: %v", err)
+		writeJSON(w, map[string]string{"error": "Ошибка чтения запроса"}, http.StatusBadRequest)
 		return
 	}
 	defer r.Body.Close()
 
 	if err := json.Unmarshal(body, &task); err != nil {
-		writeJSON(w, map[string]string{"error": "Ошибка десериализации JSON"})
+		log.Printf("Ошибка десериализации JSON: %v", err)
+		writeJSON(w, map[string]string{"error": "Ошибка десериализации JSON"}, http.StatusBadRequest)
 		return
 	}
 
 	if task.ID == "" {
-		writeJSON(w, map[string]string{"error": "Не указан идентификатор"})
+		writeJSON(w, map[string]string{"error": "Не указан идентификатор"}, http.StatusBadRequest)
 		return
 	}
 
 	if task.Title == "" {
-		writeJSON(w, map[string]string{"error": "Не указан заголовок задачи"})
+		writeJSON(w, map[string]string{"error": "Не указан заголовок задачи"}, http.StatusBadRequest)
 		return
 	}
 
 	if err := checkDate(&task); err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusBadRequest)
 		return
 	}
 
 	if err := db.UpdateTask(&task); err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusNotFound)
 		return
 	}
 
-	writeJSON(w, map[string]string{})
+	writeJSON(w, map[string]string{}, http.StatusOK)
 }
 
 // beforeToday проверяет, что дата строго меньше сегодняшней (не включая сегодня)
@@ -155,67 +160,68 @@ func checkDate(task *db.Task) error {
 func doneTaskHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
-		writeJSON(w, map[string]string{"error": "Не указан идентификатор"})
+		writeJSON(w, map[string]string{"error": "Не указан идентификатор"}, http.StatusBadRequest)
 		return
 	}
 
 	task, err := db.GetTask(id)
 	if err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusNotFound)
 		return
 	}
 
 	if task.Repeat == "" {
 		if err := db.DeleteTask(id); err != nil {
-			writeJSON(w, map[string]string{"error": err.Error()})
+			writeJSON(w, map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, map[string]string{})
+		writeJSON(w, map[string]string{}, http.StatusOK)
 		return
 	}
 
 	now := time.Now()
 	next, err := NextDate(now, task.Date, task.Repeat)
 	if err != nil {
-		writeJSON(w, map[string]string{"error": fmt.Sprintf("Ошибка вычисления следующей даты: %v", err)})
+		writeJSON(w, map[string]string{"error": fmt.Sprintf("Ошибка вычисления следующей даты: %v", err)}, http.StatusBadRequest)
 		return
 	}
 
 	if err := db.UpdateDate(next, id); err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, map[string]string{})
+	writeJSON(w, map[string]string{}, http.StatusOK)
 }
 
 // deleteTaskHandler обрабатывает DELETE-запросы для удаления задачи
 func deleteTaskHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if id == "" {
-		writeJSON(w, map[string]string{"error": "Не указан идентификатор"})
+		writeJSON(w, map[string]string{"error": "Не указан идентификатор"}, http.StatusBadRequest)
 		return
 	}
 
 	if err := db.DeleteTask(id); err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		writeJSON(w, map[string]string{"error": err.Error()}, http.StatusNotFound)
 		return
 	}
 
-	writeJSON(w, map[string]string{})
+	writeJSON(w, map[string]string{}, http.StatusOK)
 }
 
 // writeJSON записывает данные в формате JSON в HTTP-ответ
-func writeJSON(w http.ResponseWriter, data any) {
+func writeJSON(w http.ResponseWriter, data any, statusCode int) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
+		log.Printf("Ошибка сериализации JSON: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"Ошибка сериализации JSON"}`))
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(statusCode)
 	w.Write(jsonData)
 }
