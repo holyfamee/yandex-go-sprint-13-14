@@ -1,0 +1,26 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# Временные файлы
+*.log
+*.db
+*.db-journal
+
+# Тесты
+tests/
+
+# Документация
+*.md
+!README.md
+
+# Собранные файлы
+scheduler
+scheduler.exe
+
+# Директории
+data/
